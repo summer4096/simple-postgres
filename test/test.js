@@ -25,9 +25,26 @@ test('db.query', async function (t) {
   t.ok(Array.isArray(result.rows), 'should return result with rows property')
 })
 
+test('db.query (template string)', async function (t) {
+  let result = await db.query`select * from generate_series(${1}::int, ${2 + 1}::int) g`
+  t.equal(result.rowCount, 3, 'should return result with rowCount property')
+  t.equal(result.command, 'SELECT', 'should return result with command property')
+  t.ok(Array.isArray(result.rows), 'should return result with rows property')
+})
+
 test('db.rows', async function (t) {
   t.deepEqual(
     await db.rows('select * from generate_series(1, 3) g'),
+    [1, 2, 3].map(
+      (g) => ({g})
+    ),
+    'should return an array of objects'
+  )
+})
+
+test('db.rows (template string)', async function (t) {
+  t.deepEqual(
+    await db.rows`select * from generate_series(${1}::int, ${2 + 1}::int) g`,
     [1, 2, 3].map(
       (g) => ({g})
     ),
@@ -43,9 +60,25 @@ test('db.row', async function (t) {
   )
 })
 
+test('db.row (template string)', async function (t) {
+  t.deepEqual(
+    await db.row`select ${1}::int as a`,
+    {a: 1},
+    'should return a single object'
+  )
+})
+
 test('db.value', async function (t) {
   t.equal(
     await db.value('select 1'),
+    1,
+    'should return a single value'
+  )
+})
+
+test('db.value (template string)', async function (t) {
+  t.equal(
+    await db.value`select ${1}::int`,
     1,
     'should return a single value'
   )
@@ -56,6 +89,45 @@ test('db.column', async function (t) {
     await db.column('select * from generate_series(1, 3)'),
     [1, 2, 3],
     'should return an array of the first value in each row'
+  )
+})
+
+test('db.column (template string)', async function (t) {
+  t.deepEqual(
+    await db.column`select * from generate_series(${1}::int, ${3}::int)`,
+    [1, 2, 3],
+    'should return an array of the first value in each row'
+  )
+})
+
+test('sql-injection-proof template strings', async function (t) {
+  let evil = 'SELECT evil"\''
+  t.equal(
+    await db.value`SELECT ${evil}::text`,
+    evil
+  )
+})
+
+test('escaping', async function (t) {
+  t.equal(db.escape('a\'a\\'), ' E\'a\'\'a\\\\\'')
+})
+
+test('identifier escaping', async function (t) {
+  t.equal(db.escapeIdentifier('weird " ?'), '"weird "" ?"')
+})
+
+test('identifier template escaping', async function (t) {
+  t.equal(
+    await db.value`SELECT '${db.identifier('weird " string')}'::text`,
+    '"weird "" string"'
+  )
+})
+
+test('literal template escaping', async function (t) {
+  let weird = 'a\'a\\'
+  t.equal(
+    await db.value`SELECT ${db.literal(weird)}::text`,
+    weird
   )
 })
 

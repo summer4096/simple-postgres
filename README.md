@@ -10,6 +10,7 @@ npm install simple-postgres
 * zero configuration, uses DATABASE_URL
 * shortcuts for getting the first row, first value, etc
 * transactions
+* es6 template strings for query assembly
 * very high test coverage
 * very few lines of code
 * only depends on pg and a connection string parser
@@ -63,6 +64,42 @@ db.column('SELECT * FROM generate_series(1, 5)')
 // => [1, 2, 3, 4, 5]
 ```
 
+##### template string mode
+
+Any of the above functions can be used with template string literals to make
+long queries more readable. Interpolated values will be moved to the `params`
+array and replaced with $1, $2, etc. *Do not use parentheses around your
+template string or you will open yourself up to SQL injection attacks and you
+will have a bad day.*
+
+Example:
+```js
+let type = 'pancake'
+// the following two calls are identical:
+db.value`
+  SELECT COUNT(*)
+  FROM breakfast
+  WHERE type = ${type}
+`
+db.value('SELECT COUNT(*) FROM breakfast WHERE type = $1', [type])
+```
+
+If you need to interpolate an identifier such as a table name, the normal
+escaping will wrap your value in single quotes and prevent your query from
+working. You want the `db.identifier` function for this.
+
+Example:
+```js
+let table = 'breakfast'
+let type = 'pancake'
+
+db.value`
+  SELECT COUNT(*)
+  FROM ${db.identifier(table)}
+  WHERE type = ${type}
+`
+```
+
 ##### db.transaction(block)
 perform a [database transaction](https://www.postgresql.org/docs/current/static/tutorial-transactions.html)
 
@@ -88,10 +125,3 @@ db.transaction(async function (trx) {
 ### Contributing
 
 Please send pull requests!
-
-### Wishlist
-
-* configurable transaction isolation
-* transaction savepoints
-* tagged template strings for assembling sql
-* escaping utility functions

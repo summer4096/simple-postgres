@@ -1,5 +1,123 @@
-let pg = require('pg')
-let parseConnectionString = require('pg-connection-string').parse
+var pg = require('pg')
+var parseConnectionString = require('pg-connection-string').parse
+var escape = require('./escape')
+
+var INTERFACE = {
+  query () {
+    var args = Array.prototype.slice.call(arguments)
+    var client = args.shift()
+    if (Array.isArray(args[0])) args = sqlTemplate(client, args)
+    var sql = args[0]
+    var params = args[1]
+
+    return new Promise(function doQuery (resolve, reject) {
+      client.query(sql, params, function onResult (err, result) {
+        if (err) {
+          reject(err)
+        } else {
+          resolve(result)
+        }
+      })
+    })
+  },
+  rows () {
+    return INTERFACE.query.apply(null, arguments).then(
+      function (result) { return result.rows }
+    )
+  },
+  row () {
+    return INTERFACE.query.apply(null, arguments).then(
+      function (result) { return result.rows[0] }
+    )
+  },
+  value () {
+    return INTERFACE.row.apply(null, arguments).then(
+      function (row) { return row && row[ Object.keys(row)[0] ] }
+    )
+  },
+  column () {
+    return INTERFACE.query.apply(null, arguments).then(
+      function (result) {
+        var col = result.rows[0] && Object.keys(result.rows[0])[0]
+        return result.rows.map(
+          function (row) { return row[col] }
+        )
+      }
+    )
+  }
+}
+
+function sqlTemplate (client, values) {
+  var strings = values.shift()
+  var stringsLength = strings.length
+  var valuesLength = values.length
+  var maxLength = Math.max(stringsLength, valuesLength)
+
+  var sql = ''
+  var params = []
+  for (var i = 0; i < maxLength; i++) {
+    if (i < stringsLength) {
+      sql += strings[i]
+    }
+    if (i < valuesLength) {
+      var val = values[i]
+      if (typeof val === 'object' && val !== null && typeof val.__unsafelyGetRawSql === 'function') {
+        sql += val.__unsafelyGetRawSql(client)
+      } else {
+        sql += '$' + params.push(values[i])
+      }
+    }
+  }
+
+  return [sql, params]
+}
+
+function templateIdentifier (value) {
+  value = escape.identifier(value)
+  return {
+    __unsafelyGetRawSql () {
+      return value
+    }
+  }
+}
+
+function templateLiteral (value) {
+  value = escape.literal(value)
+  return {
+    __unsafelyGetRawSql () {
+      return value
+    }
+  }
+}
+
+function withConnection (server, work) {
+  var client
+  var done
+  return (
+    connect(server)
+      .then(function onConnect (conn) {
+        client = conn[0]
+        done = conn[1]
+        return work(client)
+      })
+      .then(function onResult (result) {
+        done()
+        return result
+      })
+      .catch(function onError (err) {
+        if (done) {
+          if (err instanceof Error && err.ABORT_CONNECTION) {
+            // this is a really bad one, remove the connection from the pool
+            done(err)
+          } else {
+            done()
+          }
+        }
+        if (done) done()
+        throw err
+      })
+  )
+}
 
 function connect (server) {
   if (typeof server === 'string') {
@@ -31,86 +149,18 @@ function connect (server) {
   })
 }
 
-const INTERFACE = {
-  query (client, sql, params) {
-    return new Promise(function doQuery (resolve, reject) {
-      client.query(sql, params, function onResult (err, result) {
-        if (err) {
-          reject(err)
-        } else {
-          resolve(result)
-        }
-      })
-    })
-  },
-  rows (client, sql, params) {
-    return INTERFACE.query(client, sql, params).then(
-      (result) => result.rows
-    )
-  },
-  row (client, sql, params) {
-    return INTERFACE.query(client, sql, params).then(
-      (result) => result.rows[0]
-    )
-  },
-  value (client, sql, params) {
-    return INTERFACE.row(client, sql, params).then(
-      (row) => row && row[ Object.keys(row)[0] ]
-    )
-  },
-  column (client, sql, params) {
-    return INTERFACE.query(client, sql, params).then(
-      (result) => {
-        let col = result.rows[0] && Object.keys(result.rows[0])[0]
-        return result.rows.map(
-          (row) => row[col]
-        )
-      }
-    )
-  }
-}
-
-function withConnection (server, work) {
-  let client
-  let done
-  return (
-    connect(server)
-      .then(function onConnect (conn) {
-        client = conn[0]
-        done = conn[1]
-        return work(client)
-      })
-      .then(function onResult (result) {
-        done()
-        return result
-      })
-      .catch(function onError (err) {
-        if (done) {
-          if (err instanceof Error && err.ABORT_CONNECTION) {
-            // this is a really bad one, remove the connection from the pool
-            done(err)
-          } else {
-            done()
-          }
-        }
-        if (done) done()
-        throw err
-      })
-  )
-}
-
 function configure (server) {
-  let iface = {
+  var iface = {
     transaction (work) {
-      let trxIface
+      var trxIface
       return withConnection(server, function doTransaction (client) {
         trxIface = Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
           i[methodName] = INTERFACE[methodName].bind(null, client)
           return i
         }, {})
 
-        let result
-        let inTransaction
+        var result
+        var inTransaction
 
         return (
           trxIface.query('begin')
@@ -133,7 +183,7 @@ function configure (server) {
                   .catch(function onRollbackFail (rollbackErr) {
                     err = (err instanceof Error ? err.message + '\n' + err.stack : err)
                     rollbackErr = (rollbackErr instanceof Error ? rollbackErr.message + '\n' + rollbackErr.stack : rollbackErr)
-                    let bigErr = new Error(
+                    var bigErr = new Error(
                       'Failed to execute rollback after error\n' +
                       err + '\n\n' + rollbackErr
                     )
@@ -150,10 +200,16 @@ function configure (server) {
     }
   }
 
+  iface.identifier = templateIdentifier
+  iface.literal = templateLiteral
+  iface.escape = escape.literal
+  iface.escapeIdentifier = escape.identifier
+
   iface = Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
     i[methodName] = function (sql, params) {
+      var args = Array.prototype.slice.call(arguments)
       return withConnection(server, function onConnect (client) {
-        return INTERFACE[methodName](client, sql, params)
+        return INTERFACE[methodName].apply(null, [client].concat(args))
       })
     }
     i[methodName].displayName = methodName
@@ -163,7 +219,7 @@ function configure (server) {
   return iface
 }
 
-let main = configure(process.env.DATABASE_URL)
+var main = configure(process.env.DATABASE_URL)
 main.configure = configure
 
 module.exports = main
