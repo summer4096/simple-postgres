@@ -122,6 +122,49 @@ db.transaction(async function (trx) {
 })
 ```
 
+##### db.connection(block)
+perform multiple queries sequentially on a single connection
+
+**block**: should be a function which will perform work inside the connection
+and return a promise. When the promise resolves or rejects, the connection will
+be returned to the pool.
+
+Example:
+```js
+let cookies = await db.connection(async function ({ query, value }) {
+  // count the number of cookies, or timeout if it takes more than a minute
+  await query('SET statement_timeout=60000')
+  return value('SELECT COUNT(*) FROM cookies')
+})
+```
+
+##### Query cancellation
+The promises returned by `db.query`, `db.rows`, etc all have a `cancel` method
+which will kill the query on the backend.
+
+Example:
+```js
+let query = db.query('SELECT COUNT(*) FROM slow_table')
+
+query.catch(err => {
+  if (err instanceof db.Cancel) {
+    console.log('query cancelled')
+  } else {
+    console.error('unexpected error', err)
+  }
+})
+
+q.cancel().then(() => console.log('cancel resolved'))
+
+// STDOUT:
+// query cancelled
+// cancel resolved
+```
+
+An obscure note about cancellation: `db.connection` and `db.transaction` do not
+have `.cancel()` methods, although you can cancel individual queries you run
+within them.
+
 ### Contributing
 
 Please send pull requests!

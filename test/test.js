@@ -18,6 +18,31 @@ function destroyConnections () {
   )
 }
 
+test('cancel', async function (t) {
+  let q = db.query('SELECT pg_sleep(10)')
+  let err
+  q.then(val => t.fail('pg_sleep should be cancelled')).catch(e => { err = e })
+  await q.cancel()
+  t.ok(err instanceof db.Cancel, 'query should be cancelled')
+})
+
+test('db.connection', async function (t) {
+  await db.connection(async function ({ query, value }) {
+    await query('SET statement_timeout=123456789')
+    t.equal(await value('SHOW statement_timeout'), '123456789ms', 'should use the same connection')
+  })
+})
+
+test('db.connection cancel', async function (t) {
+  await db.connection(async function ({ query, value }) {
+    let q = db.query('SELECT pg_sleep(10)')
+    let err
+    q.then(val => t.fail('pg_sleep should be cancelled')).catch(e => { err = e })
+    await q.cancel()
+    t.ok(err instanceof db.Cancel, 'query should be cancelled')
+  })
+})
+
 test('db.query', async function (t) {
   let result = await db.query('select * from generate_series(1, 3) g')
   t.equal(result.rowCount, 3, 'should return result with rowCount property')

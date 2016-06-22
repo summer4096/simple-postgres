@@ -10,33 +10,48 @@ var INTERFACE = {
     var sql = args[0]
     var params = args[1]
 
-    return new Promise(function doQuery (resolve, reject) {
-      client.query(sql, params, function onResult (err, result) {
-        if (err) {
+    var query
+    var cancelled
+
+    var promise = new Promise(function doQuery (resolve, reject) {
+      if (cancelled) return reject(new Cancel())
+      query = client.query(sql, params, function onResult (err, result) {
+        if (cancelled) {
+          reject(new Cancel())
+        } else if (err) {
           reject(err)
         } else {
           resolve(result)
         }
       })
     })
+
+    promise.cancel = function cancel () {
+      cancelled = true
+      if (client.activeQuery === query) {
+        return INTERFACE.query(client, 'SELECT pg_cancel_backend($1)', [client.processID])
+      }
+    }
+
+    return promise
   },
   rows () {
-    return INTERFACE.query.apply(null, arguments).then(
+    return thenWithCancel(INTERFACE.query.apply(null, arguments),
       function (result) { return result.rows }
     )
   },
   row () {
-    return INTERFACE.query.apply(null, arguments).then(
+    return thenWithCancel(INTERFACE.query.apply(null, arguments),
       function (result) { return result.rows[0] }
     )
   },
   value () {
-    return INTERFACE.row.apply(null, arguments).then(
+    return thenWithCancel(INTERFACE.row.apply(null, arguments),
       function (row) { return row && row[ Object.keys(row)[0] ] }
     )
   },
   column () {
-    return INTERFACE.query.apply(null, arguments).then(
+    return thenWithCancel(INTERFACE.query.apply(null, arguments),
       function (result) {
         var col = result.rows[0] && Object.keys(result.rows[0])[0]
         return result.rows.map(
@@ -45,6 +60,20 @@ var INTERFACE = {
       }
     )
   }
+}
+
+function Cancel () {
+  this.name = 'Cancel'
+  this.message = 'Query cancelled'
+  this.stack = (new Error()).stack
+}
+Cancel.prototype = Object.create(Error.prototype)
+Cancel.prototype.constructor = Cancel
+
+function thenWithCancel (promise, fn) {
+  var newPromise = promise.then(fn)
+  newPromise.cancel = promise.cancel.bind(promise)
+  return newPromise
 }
 
 function sqlTemplate (client, values) {
@@ -90,18 +119,36 @@ function templateLiteral (value) {
   }
 }
 
-function withConnection (server, work) {
+function withConnection (server, work, cancellable) {
   var client
   var done
-  return (
+  var cancelled
+  var activeWork
+  var finishCancel
+
+  var promise = (
     connect(server)
       .then(function onConnect (conn) {
         client = conn[0]
         done = conn[1]
-        return work(client)
+
+        if (cancelled) {
+          done()
+          setImmediate(finishCancel)
+          throw new Cancel()
+        }
+
+        activeWork = work(client)
+        return activeWork
       })
       .then(function onResult (result) {
         done()
+
+        if (cancelled) {
+          setImmediate(finishCancel)
+          throw new Cancel()
+        }
+
         return result
       })
       .catch(function onError (err) {
@@ -113,10 +160,28 @@ function withConnection (server, work) {
             done()
           }
         }
-        if (done) done()
+
+        if (cancelled) {
+          setImmediate(finishCancel)
+          throw new Cancel()
+        }
+
         throw err
       })
   )
+
+  if (cancellable) {
+    promise.cancel = function () {
+      cancelled = true
+      if (activeWork !== null && typeof activeWork === 'object' && typeof activeWork.cancel === 'function') {
+        return activeWork.cancel()
+      } else {
+        return new Promise(resolve => { finishCancel = resolve })
+      }
+    }
+  }
+
+  return promise
 }
 
 function connect (server) {
@@ -151,26 +216,28 @@ function connect (server) {
 
 function configure (server) {
   var iface = {
-    transaction (work) {
-      var trxIface
-      return withConnection(server, function doTransaction (client) {
-        trxIface = Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
+    connection (work) {
+      return withConnection(server, function doConnection (client) {
+        return work(Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
           i[methodName] = INTERFACE[methodName].bind(null, client)
           return i
-        }, {})
-
+        }, {}))
+      })
+    },
+    transaction (work) {
+      return iface.connection(function doTransaction (connIface) {
         var result
         var inTransaction
 
         return (
-          trxIface.query('begin')
+          connIface.query('begin')
             .then(function onBegin () {
               inTransaction = true
-              return work(trxIface)
+              return work(connIface)
             })
             .then(function onResult (_result) {
               result = _result
-              return trxIface.query('commit')
+              return connIface.query('commit')
             })
             .then(function onCommit () {
               return result
@@ -179,7 +246,7 @@ function configure (server) {
               if (!inTransaction) throw err
 
               return (
-                trxIface.query('rollback')
+                connIface.query('rollback')
                   .catch(function onRollbackFail (rollbackErr) {
                     err = (err instanceof Error ? err.message + '\n' + err.stack : err)
                     rollbackErr = (rollbackErr instanceof Error ? rollbackErr.message + '\n' + rollbackErr.stack : rollbackErr)
@@ -210,7 +277,7 @@ function configure (server) {
       var args = Array.prototype.slice.call(arguments)
       return withConnection(server, function onConnect (client) {
         return INTERFACE[methodName].apply(null, [client].concat(args))
-      })
+      }, true)
     }
     i[methodName].displayName = methodName
     return i
@@ -219,7 +286,6 @@ function configure (server) {
   return iface
 }
 
-var main = configure(process.env.DATABASE_URL)
-main.configure = configure
-
-module.exports = main
+module.exports = configure(process.env.DATABASE_URL)
+module.exports.configure = configure
+module.exports.Cancel = Cancel
