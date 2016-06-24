@@ -3,7 +3,7 @@ var parseConnectionString = require('pg-connection-string').parse
 var escape = require('./escape')
 
 var INTERFACE = {
-  query () {
+  query: function query () {
     var args = Array.prototype.slice.call(arguments)
     var client = args.shift()
     if (Array.isArray(args[0])) args = sqlTemplate(client, args)
@@ -35,22 +35,22 @@ var INTERFACE = {
 
     return promise
   },
-  rows () {
+  rows: function rows () {
     return thenWithCancel(INTERFACE.query.apply(null, arguments),
       function (result) { return result.rows }
     )
   },
-  row () {
+  row: function row () {
     return thenWithCancel(INTERFACE.query.apply(null, arguments),
       function (result) { return result.rows[0] }
     )
   },
-  value () {
+  value: function value () {
     return thenWithCancel(INTERFACE.row.apply(null, arguments),
       function (row) { return row && row[ Object.keys(row)[0] ] }
     )
   },
-  column () {
+  column: function column () {
     return thenWithCancel(INTERFACE.query.apply(null, arguments),
       function (result) {
         var col = result.rows[0] && Object.keys(result.rows[0])[0]
@@ -104,7 +104,7 @@ function sqlTemplate (client, values) {
 function templateIdentifier (value) {
   value = escape.identifier(value)
   return {
-    __unsafelyGetRawSql () {
+    __unsafelyGetRawSql: function __unsafelyGetRawSql () {
       return value
     }
   }
@@ -113,7 +113,7 @@ function templateIdentifier (value) {
 function templateLiteral (value) {
   value = escape.literal(value)
   return {
-    __unsafelyGetRawSql () {
+    __unsafelyGetRawSql: function __unsafelyGetRawSql () {
       return value
     }
   }
@@ -176,7 +176,7 @@ function withConnection (server, work, cancellable) {
       if (activeWork !== null && typeof activeWork === 'object' && typeof activeWork.cancel === 'function') {
         return activeWork.cancel()
       } else {
-        return new Promise(resolve => { finishCancel = resolve })
+        return new Promise(function (resolve) { finishCancel = resolve })
       }
     }
   }
@@ -216,7 +216,7 @@ function connect (server) {
 
 function configure (server) {
   var iface = {
-    connection (work) {
+    connection: function connection (work) {
       return withConnection(server, function doConnection (client) {
         return work(Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
           i[methodName] = INTERFACE[methodName].bind(null, client)
@@ -224,7 +224,7 @@ function configure (server) {
         }, {}))
       })
     },
-    transaction (work) {
+    transaction: function transaction (work) {
       return iface.connection(function doTransaction (connIface) {
         var result
         var inTransaction
