@@ -165,6 +165,18 @@ An obscure note about cancellation: `db.connection` and `db.transaction` do not
 have `.cancel()` methods, although you can cancel individual queries you run
 within them.
 
+##### db.escape(value)
+escape a value for safe use in SQL queries, returns string
+
+While this function is tested and probably secure, you should avoid using it.
+Instead, use bind vars, as they are much more difficult to mess up.
+
+##### db.escapeIdentifier(value)
+escape a value for safe use as an identifier in SQL queries, returns string
+
+Same as the above function, except for things like table names, column names,
+etc.
+
 ### Contributing
 
 Please send pull requests!
