@@ -133,6 +133,14 @@ test('sql-injection-proof template strings', async function (t) {
   )
 })
 
+test('sql-injection-proof template array values', async function (t) {
+  let evil = 'SELECT evil"\''
+  t.deepEqual(
+    await db.value`SELECT ${[evil]}::text[]`,
+    [evil]
+  )
+})
+
 test('escaping', async function (t) {
   t.equal(db.escape('a\'a\\'), ' E\'a\'\'a\\\\\'')
 })
@@ -153,6 +161,17 @@ test('literal template escaping', async function (t) {
   t.equal(
     await db.value`SELECT ${db.literal(weird)}::text`,
     weird
+  )
+})
+
+test('array escaping', async function (t) {
+  t.equal(
+    db.escape([1, 2, 3]),
+    'Array[1, 2, 3]'
+  )
+  t.equal(
+    db.escape(['a\'', 'b', 'c"']),
+    'Array[\'a\'\'\', \'b\', \'c"\']'
   )
 })
 

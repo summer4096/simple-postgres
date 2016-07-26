@@ -16,6 +16,13 @@ module.exports = {
     return escaped
   },
   literal: function literal (str) {
+    if (typeof str === 'number') {
+      return str
+    }
+    if (Array.isArray(str)) {
+      return 'Array[' + str.map(module.exports.literal).join(', ') + ']'
+    }
+
     var hasBackslash = false
     var escaped = '\''
     for (var i = 0; i < str.length; i++) {
