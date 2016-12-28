@@ -218,7 +218,16 @@ test('bad query', async function (t) {
     await db.query('not a real sql query lol')
     t.fail('should not be able to execute an invalid query')
   } catch (err) {
-    t.equal(err.message, 'syntax error at or near "not"', 'should throw syntax error')
+    t.equal(err.message, 'SQL Error: syntax error at or near "not"\nnot a real sql query lol', 'should throw syntax error')
+  }
+})
+
+test('bad query with params', async function (t) {
+  try {
+    await db.query('SELECT * FROM imaginary_table WHERE id = $1 AND imaginary = $2', [1, true])
+    t.fail('should not be able to execute an invalid query')
+  } catch (err) {
+    t.equal(err.message, 'SQL Error: relation "imaginary_table" does not exist\nSELECT * FROM imaginary_table WHERE id = $1 AND imaginary = $2\nQuery parameters:\n  $1: number 1\n  $2: boolean true', 'should throw syntax error')
   }
 })
 
@@ -251,7 +260,7 @@ test('failed rollback', async function (t) {
   } catch (err) {
     t.ok(/Error: Failed to execute rollback after error\n/.test(err), 'broken rollback should explain what\'s up')
     t.ok(/Error: initial transaction error\n {4}at /.test(err), 'broken rollback should contain initial error stack')
-    t.ok(/Error: Connection terminated\n {4}at /.test(err), 'broken rollback should contain the rollback error stack')
+    t.ok(/SQL Error: Connection terminated\nrollback\n {4}at /.test(err), 'broken rollback should contain the rollback error stack')
     t.equal(err.ABORT_CONNECTION, true, 'transaction errors should propagate up')
   }
 

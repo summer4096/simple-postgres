@@ -1,6 +1,7 @@
 var pg = require('pg')
 var parseConnectionString = require('pg-connection-string').parse
 var escape = require('./escape')
+var inspect = require('util').inspect
 
 var INTERFACE = {
   query: function query () {
@@ -13,13 +14,15 @@ var INTERFACE = {
     var query
     var cancelled
 
+    var stack = (new Error()).stack
+
     var promise = new Promise(function doQuery (resolve, reject) {
       if (cancelled) return reject(new Cancel())
       query = client.query(sql, params, function onResult (err, result) {
         if (cancelled) {
           reject(new Cancel())
         } else if (err) {
-          reject(err)
+          reject(new SqlError(sql, params, stack, err))
         } else {
           resolve(result)
         }
@@ -69,6 +72,26 @@ function Cancel () {
 }
 Cancel.prototype = Object.create(Error.prototype)
 Cancel.prototype.constructor = Cancel
+
+function SqlError (sql, params, stack, pgErr) {
+  this.name = 'SqlError'
+  this.message = (
+    'SQL Error: ' + pgErr.message + '\n' +
+    sql +
+    (params && params.length
+      ? '\nQuery parameters:' + stringifyParameters(params)
+      : '')
+  )
+  this.stack = this.message + '\n' + stack.replace(/^.+\n/, '')
+}
+SqlError.prototype = Object.create(Error.prototype)
+SqlError.prototype.constructor = SqlError
+
+function stringifyParameters (params) {
+  return params.map(function (p, i) {
+    return '\n  $' + (i + 1) + ': ' + typeof p + ' ' + inspect(p)
+  }).join('')
+}
 
 function thenWithCancel (promise, fn) {
   var newPromise = promise.then(fn)
