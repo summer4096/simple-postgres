@@ -144,6 +144,8 @@ test('sql-injection-proof template array values', async function (t) {
 test('escaping', async function (t) {
   t.equal(db.escape('a\'a\\'), ' E\'a\'\'a\\\\\'')
   t.equal(db.escape(null), 'null')
+  t.equal(db.escape(false), 'false')
+  t.equal(db.escape(true), 'true')
 })
 
 test('identifier escaping', async function (t) {
@@ -173,6 +175,10 @@ test('array escaping', async function (t) {
   t.equal(
     db.escape(['a\'', 'b', 'c"']),
     'Array[\'a\'\'\', \'b\', \'c"\']'
+  )
+  t.equal(
+    db.escape([true, false, null]),
+    'Array[true,false,null]'
   )
 })
 

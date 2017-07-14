@@ -1,6 +1,6 @@
 // from https://github.com/brianc/node-postgres/blob/master/lib/client.js
 // ported from PostgreSQL 9.2.4 source code in src/interfaces/libpq/fe-exec.c
-// null handling added
+// non-string handling added
 
 module.exports = {
   identifier: function identifier (str) {
@@ -19,11 +19,13 @@ module.exports = {
   literal: function literal (str) {
     if (typeof str === 'number') {
       return str
-    }
-    if (str === null) {
+    } else if (str === null) {
       return 'null'
-    }
-    if (Array.isArray(str)) {
+    } else if (str === true) {
+      return 'true'
+    } else if (str === false) {
+      return 'false'
+    } else if (Array.isArray(str)) {
       return 'Array[' + str.map(module.exports.literal).join(', ') + ']'
     }
 
