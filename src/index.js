@@ -293,7 +293,14 @@ function configure (server) {
   iface.identifier = templateIdentifier
   iface.literal = templateLiteral
   iface.escape = escape.literal
+  iface.escapeLiteral = escape.literal
   iface.escapeIdentifier = escape.identifier
+  iface.escapeLiterals = function (literals, separator) {
+    return literals.map(escape.literal).join(separator || ', ')
+  }
+  iface.escapeIdentifiers = function (identifiers, separator) {
+    return identifiers.map(escape.identifier).join(separator || ', ')
+  }
 
   iface = Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
     i[methodName] = function (sql, params) {
