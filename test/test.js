@@ -146,6 +146,8 @@ test('escaping', async function (t) {
   t.equal(db.escape(null), 'null')
   t.equal(db.escape(false), 'false')
   t.equal(db.escape(true), 'true')
+  t.equal(db.escapeLiterals(['a', 'b']), '\'a\', \'b\'')
+  t.equal(db.escapeIdentifiers(['a', 'b']), '"a", "b"')
 })
 
 test('identifier escaping', async function (t) {
@@ -178,7 +180,7 @@ test('array escaping', async function (t) {
   )
   t.equal(
     db.escape([true, false, null]),
-    'Array[true,false,null]'
+    'Array[true, false, null]'
   )
 })
 

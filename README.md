@@ -166,6 +166,9 @@ have `.cancel()` methods, although you can cancel individual queries you run
 within them.
 
 ##### db.escape(value)
+
+*alias of db.escapeLiteral*
+
 escape a value for safe use in SQL queries, returns string
 
 While this function is tested and probably secure, you should avoid using it.
@@ -176,6 +179,20 @@ escape a value for safe use as an identifier in SQL queries, returns string
 
 Same as the above function, except for things like table names, column names,
 etc.
+
+##### db.escapeLiterals(values, separator = ', ')
+escape an array of literals and join them with the given separator, returns string
+
+```
+db.escapeLiterals(['a', 'b', 'c']) === "'a', 'b', 'c'"
+```
+
+##### db.escapeIdentifiers(values, separator = ', ')
+escape an array of identifiers and join them with the given separator, returns string
+
+```
+db.escapeIdentifiers(['a', 'b', 'c']) === '"a", "b", "c"'
+```
 
 ### Contributing
 
