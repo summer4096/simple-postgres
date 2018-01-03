@@ -161,10 +161,26 @@ test('identifier template escaping', async function (t) {
   )
 })
 
+test('identifiers template escaping', async function (t) {
+  let weird = ['a"a\\']
+  t.deepEqual(
+    await db.value`SELECT '${db.identifiers(weird)}'::text`,
+    '"a""a\\"'
+  )
+})
+
 test('literal template escaping', async function (t) {
   let weird = 'a\'a\\'
   t.equal(
     await db.value`SELECT ${db.literal(weird)}::text`,
+    weird
+  )
+})
+
+test('literals template escaping', async function (t) {
+  let weird = ['a\'a\\']
+  t.deepEqual(
+    await db.value`SELECT Array[${db.literals(weird)}]::text[]`,
     weird
   )
 })

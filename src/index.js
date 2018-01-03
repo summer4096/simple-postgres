@@ -133,8 +133,26 @@ function templateIdentifier (value) {
   }
 }
 
+function templateIdentifiers (identifiers, separator) {
+  let value = escape.identifiers(identifiers, separator)
+  return {
+    __unsafelyGetRawSql: function __unsafelyGetRawSql () {
+      return value
+    }
+  }
+}
+
 function templateLiteral (value) {
   value = escape.literal(value)
+  return {
+    __unsafelyGetRawSql: function __unsafelyGetRawSql () {
+      return value
+    }
+  }
+}
+
+function templateLiterals (literals, separator) {
+  let value = escape.literals(literals, separator)
   return {
     __unsafelyGetRawSql: function __unsafelyGetRawSql () {
       return value
@@ -290,17 +308,16 @@ function configure (server) {
     }
   }
 
-  iface.identifier = templateIdentifier
-  iface.literal = templateLiteral
   iface.escape = escape.literal
   iface.escapeLiteral = escape.literal
+  iface.escapeLiterals = escape.literals
   iface.escapeIdentifier = escape.identifier
-  iface.escapeLiterals = function (literals, separator) {
-    return literals.map(escape.literal).join(separator || ', ')
-  }
-  iface.escapeIdentifiers = function (identifiers, separator) {
-    return identifiers.map(escape.identifier).join(separator || ', ')
-  }
+  iface.escapeIdentifiers = escape.identifiers
+
+  iface.identifier = templateIdentifier
+  iface.identifiers = templateIdentifiers
+  iface.literal = templateLiteral
+  iface.literals = templateLiterals
 
   iface = Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
     i[methodName] = function (sql, params) {

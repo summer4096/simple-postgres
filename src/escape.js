@@ -16,6 +16,9 @@ module.exports = {
     escaped += '"'
     return escaped
   },
+  identifiers: function identifiers (identifiers, separator) {
+    return identifiers.map(module.exports.identifier).join(separator || ', ')
+  },
   literal: function literal (str) {
     if (typeof str === 'number') {
       return str
@@ -47,5 +50,8 @@ module.exports = {
       escaped = ' E' + escaped
     }
     return escaped
+  },
+  literals: function literals (literals, separator) {
+    return literals.map(module.exports.literal).join(separator || ', ')
   }
 }
