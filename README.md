@@ -183,15 +183,51 @@ etc.
 ##### db.escapeLiterals(values, separator = ', ')
 escape an array of literals and join them with the given separator, returns string
 
-```
+```js
 db.escapeLiterals(['a', 'b', 'c']) === "'a', 'b', 'c'"
 ```
 
 ##### db.escapeIdentifiers(values, separator = ', ')
 escape an array of identifiers and join them with the given separator, returns string
 
-```
+```js
 db.escapeIdentifiers(['a', 'b', 'c']) === '"a", "b", "c"'
+```
+
+##### db.identifier(value)
+escapes an identifier in such a way that it can be passed safely into a template
+query, returns object
+
+Below, note the lack of parentheses around the SQL, with db.query being called
+as a template function.
+
+```js
+let tableName = 'potentially "dangerous" table name'
+db.query`
+  SELECT * FROM ${db.identifier(tableName)}
+`
+```
+
+##### db.identifiers(values, separator = ', ')
+escapes multiple identifiers in such a way that they can be passed safely into a
+template query, returns object
+
+```js
+let columns = ['id', 'name']
+db.query`
+  SELECT ${db.identifiers(columns)} FROM accounts
+`
+```
+
+##### db.literals(values, separator = ', ')
+escapes multiple literals in such a way that they can be passed safely into a
+template query, returns object
+
+```js
+let accounts = [1, 2, 3]
+db.query`
+  SELECT id FROM accounts WHERE name IN(${db.literals(accounts)})
+`
 ```
 
 ### Contributing
