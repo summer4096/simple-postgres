@@ -1,50 +1,96 @@
 # simple-postgres
-a minimal postgres interface for node
+
+simple-postgres is a small and powerful PostgreSQL interface for Node.js
+
+Replace all of your database boilerplate with `import db from 'simple-postgres'`
+and never look back.
+
+### Getting started
 
 ```console
 npm install simple-postgres
 ```
 
-### Features
-
-* zero configuration, uses DATABASE_URL
-* shortcuts for getting the first row, first value, etc
-* transactions
-* es6 template strings for query assembly
-* very high test coverage
-* very few lines of code
-* only depends on pg and a connection string parser
-
-### Usage
-
 ```js
 import db from 'simple-postgres'
 
-function countPancakes () {
-  return db.value('SELECT COUNT(*) FROM breakfast WHERE type = $1', ['pancake'])
-}
+let accountName = 'ACME\'; DELETE FROM accounts; --'
+
+// this is totally safe
+await db.query('INSERT INTO accounts (name) VALUES ($1)', [accountName])
+
+// this is also totally safe
+let account = await db.row`
+  SELECT *
+  FROM accounts
+  WHERE name = ${accountName}
+`
+
+console.log(account.name) // => 'ACME\'; DELETE FROM accounts; --'
 ```
+
+### Why?
+
+Many other postgres modules are bad. This one is good. Here's why:
+
+#### simple-postgres has everything you need
+ * connects using the DATABASE_URL environment variable
+ * runs queries and returns the results
+ * automatic query parameterization
+ * escaping literals, identifiers, arrays
+ * transactions
+ * async/await ready
+ * sets application_name using package.json
+ * good test coverage
+ * trusted in production by my boss who trusts nothing
+
+#### simple-postgres doesn't have anything you don't need
+ * no ORM
+ * no query builder
+ * no connect function
+ * no disconnect function
+ * no connection pool manager
+ * no configuration
+ * no initialization
+ * no callbacks
 
 ### API
 
 ##### db.query(sql, params = [])
 run a query
 
-returns a promise, which resolves with a pg [Result](https://github.com/brianc/node-postgres/wiki/Query#result-object) object
+returns a promise, which resolves with a pg [Result](https://node-postgres.com/api/result) object
 
 This is best for INSERT/UPDATE/DELETE/etc queries which will not return any rows. If you are doing a SELECT, you probably want one of the functions below.
+
+```js
+let result = await db.query('UPDATE accounts SET enabled = true')
+console.log(result.command + ' ' + result.rowCount) // => UPDATE 2
+```
 
 ##### db.rows(sql, params = [])
 run a query
 
 returns a promise, which resolves with an array of row objects
 
+```js
+let accounts = await db.rows('SELECT * FROM accounts')
+for (let account of accounts) {
+  console.log(account.id + ': ' + account.name) // => "1: ACME"
+}
+```
+
 ##### db.row(sql, params = [])
 run a query
 
 returns a promise, which resolves with the first row object
 
-Unlike other really terrible database libraries, this will not add `LIMIT 1` to the end of the query, and so that must be done manually if needed.
+This will **not** automatically add `LIMIT 1` to the end of the query.
+
+```js
+let account = await db.row('SELECT * FROM accounts WHERE id = 1')
+console.log(account.name) // => "ACME"
+```
 
 ##### db.value(sql, params = [])
 run a query
@@ -53,6 +99,11 @@ returns a promise, which resolves with the first column of the first row
 
 This is useful for things like counts.
 
+```js
+let accountName = await db.value('SELECT name FROM accounts WHERE id = 1')
+console.log(accountName) // => "ACME"
+```
+
 ##### db.column(sql, params = [])
 run a query
 
@@ -60,17 +111,15 @@ returns a promise, which resolves with an array of the first values in each row
 
 Example:
 ```js
-db.column('SELECT * FROM generate_series(1, 5)')
-// => [1, 2, 3, 4, 5]
+let oneThroughFive = await db.column('SELECT * FROM generate_series(1, 5)')
+console.log(oneThroughFive) // => [1, 2, 3, 4, 5]
 ```
 
 ##### template string mode
 
 Any of the above functions can be used with template string literals to make
 long queries more readable. Interpolated values will be moved to the `params`
-array and replaced with $1, $2, etc. *Do not use parentheses around your
-template string or you will open yourself up to SQL injection attacks and you
-will have a bad day.*
+array and replaced with $1, $2, etc.
 
 Example:
 ```js
@@ -84,9 +133,23 @@ db.value`
 db.value('SELECT COUNT(*) FROM breakfast WHERE type = $1', [type])
 ```
 
+**Do not use parentheses around your
+template string or you will open yourself up to SQL injection attacks and you
+will have a bad day.**
+
+```js
+let type = 'pancake \'; DELETE FROM accounts; --'
+// NOTE THE PARENTHESES AROUND THE BACKTICKS - DO NOT DO THIS
+db.value(`
+  SELECT COUNT(*)
+  FROM breakfast
+  WHERE type = ${type}
+`)
+```
+
 If you need to interpolate an identifier such as a table name, the normal
-escaping will wrap your value in single quotes and prevent your query from
-working. You want the `db.identifier` function for this.
+escaping will wrap your value in single quotes. Use the `db.identifier` function
+instead.
 
 Example:
 ```js
