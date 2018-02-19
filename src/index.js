@@ -1,5 +1,7 @@
 var pg = require('pg')
 var parseConnectionString = require('pg-connection-string').parse
+var findRoot = require('find-root')
+var readFileSync = require('fs').readFileSync
 var escape = require('./escape')
 var inspect = require('util').inspect
 
@@ -243,6 +245,11 @@ function connect (server) {
     process.env.PG_REAP_INTERVAL ||
     (process.env.NODE_ENV === 'test' && 50)
   )
+  server.application_name = (
+    server.application_name ||
+    process.env.APPLICATION_NAME ||
+    getApplicationName()
+  )
 
   return new Promise(function doConnection (resolve, reject) {
     return pg.connect(server, function onConnect (err, client, done) {
@@ -253,6 +260,12 @@ function connect (server) {
       }
     })
   })
+}
+
+function getApplicationName () {
+  var path = findRoot(process.argv[1] || process.cwd()) + '/package.json'
+  var pkg = JSON.parse(readFileSync(path, 'utf8'))
+  return pkg.name
 }
 
 function configure (server) {
