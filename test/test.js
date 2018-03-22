@@ -1,7 +1,6 @@
-import test from 'blue-tape'
-import db from '../src'
-import pg from 'pg'
-import 'babel-polyfill'
+const test = require('blue-tape')
+const db = require('../src')
+const pg = require('pg')
 
 function countConnections () {
   return Object.values(pg.pools.all).map(
@@ -236,6 +235,9 @@ test('bad connection url', async function (t) {
   } catch (err) {
     t.equal(err.code, 'ENOTFOUND', 'incorrect host should throw ENOTFOUND')
   }
+  // For some reason, bad request names leave the connection open for a brief window
+  // Which can cause subsequent tests to fail when they check the count of open conns
+  await new Promise(resolve => setTimeout(resolve, 1000))
 })
 
 test('bad query', async function (t) {
@@ -278,8 +280,7 @@ test('failed rollback', async function (t) {
     await db.transaction(async function ({ query }) {
       // break the transaction by destroying all connections everywhere
       destroyConnections()
-      let e = new Error('initial transaction error')
-      throw e
+      throw new Error('initial transaction error')
     })
     t.fail('transaction errors should cause the promise to reject')
   } catch (err) {
