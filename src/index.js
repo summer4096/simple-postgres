@@ -9,6 +9,9 @@ var INTERFACE = {
   query: function query () {
     var args = Array.prototype.slice.call(arguments)
     var client = args.shift()
+    if (canGetRawSqlFrom(args[0])) {
+      args[0] = args[0].__unsafelyGetRawSql()
+    }
     if (Array.isArray(args[0])) args = sqlTemplate(client, args)
     var sql = args[0]
     var params = args[1]
@@ -109,16 +112,22 @@ function sqlTemplate (client, values) {
 
   var sql = ''
   var params = []
+  var val
   for (var i = 0; i < maxLength; i++) {
     if (i < stringsLength) {
-      sql += strings[i]
-    }
-    if (i < valuesLength) {
-      var val = values[i]
-      if (typeof val === 'object' && val !== null && typeof val.__unsafelyGetRawSql === 'function') {
+      val = strings[i]
+      if (canGetRawSqlFrom(val)) {
         sql += val.__unsafelyGetRawSql(client)
       } else {
-        sql += '$' + params.push(values[i])
+        sql += val
+      }
+    }
+    if (i < valuesLength) {
+      val = values[i]
+      if (canGetRawSqlFrom(val)) {
+        sql += val.__unsafelyGetRawSql(client)
+      } else {
+        sql += '$' + params.push(val)
       }
     }
   }
@@ -160,6 +169,15 @@ function templateLiterals (literals, separator) {
       return value
     }
   }
+}
+
+function canGetRawSqlFrom (v) {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    typeof v.__unsafelyGetRawSql === 'function' &&
+    Object.keys(v).length === 1
+  )
 }
 
 function withConnection (server, work, cancellable) {
@@ -321,6 +339,32 @@ function configure (server) {
     }
   }
 
+  iface.template = function sqlTemplate (client) {
+    var values = Array.prototype.slice.call(arguments)
+    var strings = values.shift()
+    var stringsLength = strings.length
+    var valuesLength = values.length
+    var maxLength = Math.max(stringsLength, valuesLength)
+
+    return {
+      __unsafelyGetRawSql (client) {
+        var sql = ''
+        for (var i = 0; i < maxLength; i++) {
+          if (i < stringsLength) {
+            sql += strings[i]
+          }
+          if (i < valuesLength) {
+            if (canGetRawSqlFrom(values[i])) {
+              sql += values[i].__unsafelyGetRawSql(client)
+            } else {
+              sql += iface.escapeLiteral(values[i])
+            }
+          }
+        }
+        return sql
+      }
+    }
+  }
   iface.escape = escape.literal
   iface.escapeLiteral = escape.literal
   iface.escapeLiterals = escape.literals
