@@ -163,6 +163,33 @@ db.value`
 `
 ```
 
+##### db.template\`SELECT ${a}...\`
+
+Prepare a statement for later execution. This is good for testing functions that
+dynamically generate SQL.
+
+```js
+let accountName = 'ACME'
+let tableName = 'users'
+
+let subquery = db.template`
+  SELECT id
+  FROM accounts
+  WHERE name = ${accountName}
+`
+let query = db.template`
+  SELECT a, b
+  FROM ${db.identifier(tableName)}
+  WHERE account_id IN (${subquery})
+`
+
+let results = await db.rows(query)
+// [{a: , b: }, {a: , b: }, ...]
+
+let rawSql = query.__unsafelyGetRawSql()
+// SELECT a, b FROM "users" WHERE account_id IN (SELECT id FROM accounts WHERE name='ACME')
+```
+
 ##### db.transaction(block)
 perform a [database transaction](https://www.postgresql.org/docs/current/static/tutorial-transactions.html)
 
