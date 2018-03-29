@@ -334,7 +334,7 @@ let select = [
 ]
 
 let books = await db.rows`
-  SELECT ${db.items(books)}
+  SELECT ${db.items(select)}
   FROM books
 `
 /*
