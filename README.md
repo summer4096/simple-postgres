@@ -320,6 +320,29 @@ db.query`
 `
 ```
 
+##### db.items(values, separator = ', ')
+escapes multiple items in such a way that they can be passed safely into a
+template query, returns object. Escapes literals by default, but allows identifiers
+and templates.
+
+```js
+let defaultTitle = 'untitled'
+let select = [
+  'test string',
+  db.identifier('id'),
+  db.template`COALESCE(title, ${defaultTitle}) AS title`
+]
+
+let books = await db.rows`
+  SELECT ${db.items(books)}
+  FROM books
+`
+/*
+SELECT 'test string', "id", COALESCE(title, 'untitled') AS title
+FROM books
+*/
+```
+
 ### Contributing
 
 Please send pull requests!

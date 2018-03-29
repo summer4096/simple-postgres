@@ -200,6 +200,28 @@ test('array escaping', async function (t) {
   )
 })
 
+test('sql template', async function (t) {
+  let tpl = db.template`SELECT ${1} AS a, ${[1, 2, 3]} AS ${db.identifier('b')}`
+  t.equal(tpl.__unsafelyGetRawSql(), 'SELECT 1 AS a, Array[1, 2, 3] AS "b"')
+
+  let result = await db.row(tpl)
+  t.deepEqual(result, {a: 1, b: [1, 2, 3]})
+})
+
+test('nested sql template', async function (t) {
+  let subquery = db.template`SELECT ${1} AS ${db.identifier('a')}`
+  let query = db.template`SELECT ${db.identifier('b')}.${db.identifier('a')} FROM (${subquery}) AS ${db.identifier('b')}`
+  t.equal(query.__unsafelyGetRawSql(), 'SELECT "b"."a" FROM (SELECT 1 AS "a") AS "b"')
+
+  let result = await db.row(query)
+  t.deepEqual(result, {a: 1})
+})
+
+test('items template escaping', async function (t) {
+  let query = db.items([1, '2', db.template`COALESCE(3, 4)`])
+  t.equal(query.__unsafelyGetRawSql(), '1, \'2\', COALESCE(3, 4)')
+})
+
 test('successful transaction', async function (t) {
   await db.query('drop table if exists beep')
   await db.query('create table beep (id integer)')
@@ -227,23 +249,6 @@ test('successful transaction', async function (t) {
     [1, 3, 4, 5, 6],
     'changes are visible after commit'
   )
-})
-
-test('sql template', async function (t) {
-  let tpl = db.template`SELECT ${1} AS a, ${[1, 2, 3]} AS ${db.identifier('b')}`
-  t.equal(tpl.__unsafelyGetRawSql(), 'SELECT 1 AS a, Array[1, 2, 3] AS "b"')
-
-  let result = await db.row(tpl)
-  t.deepEqual(result, {a: 1, b: [1, 2, 3]})
-})
-
-test('nested sql template', async function (t) {
-  let subquery = db.template`SELECT ${1} AS ${db.identifier('a')}`
-  let query = db.template`SELECT ${db.identifier('b')}.${db.identifier('a')} FROM (${subquery}) AS ${db.identifier('b')}`
-  t.equal(query.__unsafelyGetRawSql(), 'SELECT "b"."a" FROM (SELECT 1 AS "a") AS "b"')
-
-  let result = await db.row(query)
-  t.deepEqual(result, {a: 1})
 })
 
 test('bad connection url', async function (t) {
