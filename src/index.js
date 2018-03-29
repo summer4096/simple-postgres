@@ -171,6 +171,18 @@ function templateLiterals (literals, separator) {
   }
 }
 
+function templateItems (items, separator) {
+  return {
+    __unsafelyGetRawSql: function __unsafelyGetRawSql (client) {
+      return items.map((v) =>
+        canGetRawSqlFrom(v)
+        ? v.__unsafelyGetRawSql(client)
+        : escape.literal(v)
+      ).join(separator || ', ')
+    }
+  }
+}
+
 function canGetRawSqlFrom (v) {
   return (
     typeof v === 'object' &&
@@ -371,6 +383,7 @@ function configure (server) {
   iface.escapeIdentifier = escape.identifier
   iface.escapeIdentifiers = escape.identifiers
 
+  iface.items = templateItems
   iface.identifier = templateIdentifier
   iface.identifiers = templateIdentifiers
   iface.literal = templateLiteral
