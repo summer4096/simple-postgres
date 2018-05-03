@@ -3,10 +3,10 @@
 // non-string handling added
 
 module.exports = {
-  identifier: function identifier (str) {
-    var escaped = '"'
-    for (var i = 0; i < str.length; i++) {
-      var c = str[i]
+  identifier (str) {
+    let escaped = '"'
+    for (let i = 0; i < str.length; i++) {
+      let c = str[i]
       if (c === '"') {
         escaped += c + c
       } else {
@@ -16,10 +16,10 @@ module.exports = {
     escaped += '"'
     return escaped
   },
-  identifiers: function identifiers (identifiers, separator) {
+  identifiers (identifiers, separator) {
     return identifiers.map(module.exports.identifier).join(separator || ', ')
   },
-  literal: function literal (str) {
+  literal (str) {
     if (typeof str === 'number') {
       return str
     } else if (str === null) {
@@ -32,10 +32,10 @@ module.exports = {
       return 'Array[' + str.map(module.exports.literal).join(', ') + ']'
     }
 
-    var hasBackslash = false
-    var escaped = '\''
-    for (var i = 0; i < str.length; i++) {
-      var c = str[i]
+    let hasBackslash = false
+    let escaped = '\''
+    for (let i = 0; i < str.length; i++) {
+      let c = str[i]
       if (c === '\'') {
         escaped += c + c
       } else if (c === '\\') {
@@ -51,7 +51,7 @@ module.exports = {
     }
     return escaped
   },
-  literals: function literals (literals, separator) {
+  literals (literals, separator) {
     return literals.map(module.exports.literal).join(separator || ', ')
   }
 }
