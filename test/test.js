@@ -85,6 +85,14 @@ test('db.row (template string)', async function (t) {
   )
 })
 
+test('db.row (template string with no args)', async function (t) {
+  t.deepEqual(
+    await db.row`select 1::int as a`,
+    {a: 1},
+    'should return a single object'
+  )
+})
+
 test('db.value', async function (t) {
   t.equal(
     await db.value('select 1'),

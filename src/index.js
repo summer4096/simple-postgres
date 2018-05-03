@@ -101,10 +101,13 @@ function thenWithCancel (promise, fn) {
 }
 
 function sqlTemplate (client, values) {
+  console.log(values)
   let strings = values.shift()
   let stringsLength = strings.length
   let valuesLength = values.length
   let maxLength = Math.max(stringsLength, valuesLength)
+
+  console.log(values, strings)
 
   let sql = ''
   let params = []
@@ -375,9 +378,9 @@ function configure (server) {
   iface.pool = pool
 
   iface = Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
-    i[methodName] = function (sql, params, ...rest) {
+    i[methodName] = function (...args) {
       return withConnection(connect(), function onConnect (client) {
-        return INTERFACE[methodName](client, sql, params, ...rest)
+        return INTERFACE[methodName](client, ...args)
       }, true)
     }
     i[methodName].displayName = methodName
