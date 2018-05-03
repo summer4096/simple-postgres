@@ -1,20 +1,13 @@
 const test = require('blue-tape')
 const db = require('../src')
-const pg = require('pg')
 
-function countConnections () {
-  return Object.values(pg.pools.all).map(
-    pool => pool.availableObjectsCount()
-  ).reduce((a, b) => a + b, 0)
+function countConnections (pool) {
+  return pool.totalCount
 }
 
-function destroyConnections () {
+function destroyConnections (pool) {
   // break things by destroying all connections everywhere
-  Object.values(pg.pools.all).forEach(
-    (p) => p._inUseObjects.forEach(
-      (c) => c.end()
-    )
-  )
+  return Promise.all(pool._clients.map(c => c.end()))
 }
 
 test('cancel', async function (t) {
@@ -257,9 +250,6 @@ test('bad connection url', async function (t) {
   } catch (err) {
     t.equal(err.code, 'ENOTFOUND', 'incorrect host should throw ENOTFOUND')
   }
-  // For some reason, bad request names leave the connection open for a brief window
-  // Which can cause subsequent tests to fail when they check the count of open conns
-  await new Promise(resolve => setTimeout(resolve, 1000))
 })
 
 test('bad query', async function (t) {
@@ -291,7 +281,7 @@ test('bad sql in transaction', async function (t) {
   }
 
   t.equal(
-    countConnections(),
+    countConnections(db.pool),
     1,
     'rollbacks should keep the connection in the pool'
   )
@@ -301,19 +291,19 @@ test('failed rollback', async function (t) {
   try {
     await db.transaction(async function ({ query }) {
       // break the transaction by destroying all connections everywhere
-      destroyConnections()
+      await destroyConnections(db.pool)
       throw new Error('initial transaction error')
     })
     t.fail('transaction errors should cause the promise to reject')
   } catch (err) {
     t.ok(/Error: Failed to execute rollback after error\n/.test(err), 'broken rollback should explain what\'s up')
     t.ok(/Error: initial transaction error\n {4}at /.test(err), 'broken rollback should contain initial error stack')
-    t.ok(/SQL Error: Connection terminated\nrollback\n {4}at /.test(err), 'broken rollback should contain the rollback error stack')
+    t.ok(/SQL Error: This socket has been ended/.test(err), 'broken rollback should contain the rollback error stack')
     t.equal(err.ABORT_CONNECTION, true, 'transaction errors should propagate up')
   }
 
   t.equal(
-    countConnections(),
+    countConnections(db.pool),
     0,
     'failed transaction rollbacks should remove the client from the pool'
   )

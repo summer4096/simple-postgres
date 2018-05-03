@@ -1,4 +1,4 @@
-const pg = require('pg')
+const { Pool } = require('pg')
 const parseConnectionString = require('pg-connection-string').parse
 const findRoot = require('find-root')
 const readFileSync = require('fs').readFileSync
@@ -188,56 +188,52 @@ function canGetRawSqlFrom (v) {
   )
 }
 
-function withConnection (server, work, cancellable) {
+function withConnection (connection, work, cancellable) {
   let client
   let done
   let cancelled
   let activeWork
   let finishCancel
 
-  let promise = (
-    connect(server)
-      .then(function onConnect (conn) {
-        client = conn[0]
-        done = conn[1]
+  let promise =
+    connection.then(function onConnect (conn) {
+      client = conn[0]
+      done = conn[1]
 
-        if (cancelled) {
-          done()
-          setImmediate(finishCancel)
-          throw new Cancel()
-        }
-
-        activeWork = work(client)
-        return activeWork
-      })
-      .then(function onResult (result) {
+      if (cancelled) {
         done()
+        setImmediate(finishCancel)
+        throw new Cancel()
+      }
 
-        if (cancelled) {
-          setImmediate(finishCancel)
-          throw new Cancel()
+      activeWork = work(client)
+      return activeWork
+    }).then(function onResult (result) {
+      done()
+
+      if (cancelled) {
+        setImmediate(finishCancel)
+        throw new Cancel()
+      }
+
+      return result
+    }).catch(function onError (err) {
+      if (done) {
+        if (err instanceof Error && err.ABORT_CONNECTION) {
+          // this is a really bad one, remove the connection from the pool
+          done(err)
+        } else {
+          done()
         }
+      }
 
-        return result
-      })
-      .catch(function onError (err) {
-        if (done) {
-          if (err instanceof Error && err.ABORT_CONNECTION) {
-            // this is a really bad one, remove the connection from the pool
-            done(err)
-          } else {
-            done()
-          }
-        }
+      if (cancelled) {
+        setImmediate(finishCancel)
+        throw new Cancel()
+      }
 
-        if (cancelled) {
-          setImmediate(finishCancel)
-          throw new Cancel()
-        }
-
-        throw err
-      })
-  )
+      throw err
+    })
 
   if (cancellable) {
     promise.cancel = function () {
@@ -253,41 +249,6 @@ function withConnection (server, work, cancellable) {
   return promise
 }
 
-function connect (server) {
-  if (typeof server === 'string') {
-    server = parseConnectionString(server)
-  } else if (typeof server === 'undefined') {
-    server = {}
-  }
-
-  server.poolSize = server.poolSize || process.env.PG_POOL_SIZE
-  server.poolIdleTimeout = (
-    server.poolIdleTimeout ||
-    process.env.PG_IDLE_TIMEOUT ||
-    (process.env.NODE_ENV === 'test' && 1)
-  )
-  server.reapIntervalMillis = (
-    server.reapIntervalMillis ||
-    process.env.PG_REAP_INTERVAL ||
-    (process.env.NODE_ENV === 'test' && 50)
-  )
-  server.application_name = (
-    server.application_name ||
-    process.env.APPLICATION_NAME ||
-    getApplicationName()
-  )
-
-  return new Promise(function doConnection (resolve, reject) {
-    return pg.connect(server, function onConnect (err, client, done) {
-      if (err) {
-        reject(err)
-      } else {
-        resolve([client, done])
-      }
-    })
-  })
-}
-
 function getApplicationName () {
   let path = findRoot(process.argv[1] || process.cwd()) + '/package.json'
   let pkg = JSON.parse(readFileSync(path, 'utf8'))
@@ -295,9 +256,38 @@ function getApplicationName () {
 }
 
 function configure (server) {
+  if (typeof server === 'string') {
+    server = parseConnectionString(server)
+  } else if (typeof server === 'undefined') {
+    server = {}
+  }
+
+  server.max = server.poolSize || process.env.PG_POOL_SIZE
+  server.idleTimeoutMillis = (
+    server.idleTimeoutMillis ||
+    process.env.PG_IDLE_TIMEOUT ||
+    (process.env.NODE_ENV === 'test' && 1)
+  )
+  server.application_name = (
+    server.application_name ||
+    process.env.APPLICATION_NAME ||
+    getApplicationName()
+  )
+
+  let pool = new Pool(server)
+
+  function connect () {
+    return new Promise((resolve, reject) => {
+      pool.connect((err, client, release) => {
+        if (err) reject(err)
+        else resolve([client, release])
+      })
+    })
+  }
+
   let iface = {
     connection: function connection (work) {
-      return withConnection(server, function doConnection (client) {
+      return withConnection(connect(), function doConnection (client) {
         return work(Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
           i[methodName] = INTERFACE[methodName].bind(null, client)
           return i
@@ -382,10 +372,11 @@ function configure (server) {
   iface.identifiers = templateIdentifiers
   iface.literal = templateLiteral
   iface.literals = templateLiterals
+  iface.pool = pool
 
   iface = Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
     i[methodName] = function (sql, params, ...rest) {
-      return withConnection(server, function onConnect (client) {
+      return withConnection(connect(), function onConnect (client) {
         return INTERFACE[methodName](client, sql, params, ...rest)
       }, true)
     }
