@@ -273,6 +273,14 @@ function configure (server) {
     getApplicationName()
   )
 
+  if (server.debug_postgres || process.env.DEBUG_POSTGRES) {
+    const defaultLog = server.log || function () {}
+    server.log = function debugLog (...args) {
+      console.debug('simple-postgres debug', ...args)
+      defaultLog(...args)
+    }
+  }
+
   let _pool
   function pool () {
     if (!_pool) {
