@@ -285,7 +285,15 @@ function configure (server) {
 
   function connect () {
     // TODO: allow returning just the client, not the tuple of client + release fn
-    return pool().then(p => p.connect()).then(client => [client, client.release.bind(client)])
+    return pool().then(p => p.connect()).then(client => {
+      if (typeof client.__simplePostgresOnError === 'undefined') {
+        client.__simplePostgresOnError = true
+        client.on('error', function (e) {
+          console.error('unhandled node-postgres client error!', e instanceof Error ? e.stack : e)
+        })
+      }
+      return [client, client.release.bind(client)]
+    })
   }
 
   let iface = {
