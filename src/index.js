@@ -1,27 +1,23 @@
-var pg = require('pg')
-var parseConnectionString = require('pg-connection-string').parse
-var findRoot = require('find-root')
-var readFileSync = require('fs').readFileSync
-var escape = require('./escape')
-var inspect = require('util').inspect
+const { Pool } = require('pg')
+const parseConnectionString = require('pg-connection-string').parse
+const findRoot = require('find-root')
+const readFileSync = require('fs').readFileSync
+const escape = require('./escape')
+const inspect = require('util').inspect
 
-var INTERFACE = {
-  query: function query () {
-    var args = Array.prototype.slice.call(arguments)
-    var client = args.shift()
+const INTERFACE = {
+  query (client, ...args) {
     if (canGetRawSqlFrom(args[0])) {
       args[0] = args[0].__unsafelyGetRawSql()
     }
     if (Array.isArray(args[0])) args = sqlTemplate(client, args)
-    var sql = args[0]
-    var params = args[1]
+    let sql = args[0]
+    let params = args[1]
+    let query
+    let cancelled
+    let stack = (new Error()).stack
 
-    var query
-    var cancelled
-
-    var stack = (new Error()).stack
-
-    var promise = new Promise(function doQuery (resolve, reject) {
+    let promise = new Promise(function doQuery (resolve, reject) {
       if (cancelled) return reject(new Cancel())
       query = client.query(sql, params, function onResult (err, result) {
         if (cancelled) {
@@ -43,25 +39,25 @@ var INTERFACE = {
 
     return promise
   },
-  rows: function rows () {
-    return thenWithCancel(INTERFACE.query.apply(null, arguments),
+  rows (...args) {
+    return thenWithCancel(INTERFACE.query(...args),
       function (result) { return result.rows }
     )
   },
-  row: function row () {
-    return thenWithCancel(INTERFACE.query.apply(null, arguments),
+  row (...args) {
+    return thenWithCancel(INTERFACE.query(...args),
       function (result) { return result.rows[0] }
     )
   },
-  value: function value () {
-    return thenWithCancel(INTERFACE.row.apply(null, arguments),
+  value (...args) {
+    return thenWithCancel(INTERFACE.row(...args),
       function (row) { return row && row[ Object.keys(row)[0] ] }
     )
   },
-  column: function column () {
-    return thenWithCancel(INTERFACE.query.apply(null, arguments),
+  column (...args) {
+    return thenWithCancel(INTERFACE.query(...args),
       function (result) {
-        var col = result.rows[0] && Object.keys(result.rows[0])[0]
+        let col = result.rows[0] && Object.keys(result.rows[0])[0]
         return result.rows.map(
           function (row) { return row[col] }
         )
@@ -70,27 +66,27 @@ var INTERFACE = {
   }
 }
 
-function Cancel () {
-  this.name = 'Cancel'
-  this.message = 'Query cancelled'
-  this.stack = (new Error()).stack
+class Cancel extends Error {
+  constructor () {
+    super()
+    this.name = 'Cancel'
+    this.message = 'Query cancelled'
+  }
 }
-Cancel.prototype = Object.create(Error.prototype)
-Cancel.prototype.constructor = Cancel
 
-function SqlError (sql, params, stack, pgErr) {
-  this.name = 'SqlError'
-  this.message = (
-    'SQL Error: ' + pgErr.message + '\n' +
-    sql +
-    (params && params.length
-      ? '\nQuery parameters:' + stringifyParameters(params)
-      : '')
-  )
-  this.stack = this.message + '\n' + stack.replace(/^.+\n/, '')
+class SqlError extends Error {
+  constructor (sql, params, stack, pgError) {
+    super()
+    this.name = 'SqlError'
+    this.message = (
+      'SQL Error: ' + pgError.message + '\n' +
+      sql +
+      (params && params.length
+        ? '\nQuery parameters:' + stringifyParameters(params)
+        : ''))
+    this.stack = this.message + '\n' + stack.replace(/^.+\n/, '')
+  }
 }
-SqlError.prototype = Object.create(Error.prototype)
-SqlError.prototype.constructor = SqlError
 
 function stringifyParameters (params) {
   return params.map(function (p, i) {
@@ -99,21 +95,20 @@ function stringifyParameters (params) {
 }
 
 function thenWithCancel (promise, fn) {
-  var newPromise = promise.then(fn)
+  let newPromise = promise.then(fn)
   newPromise.cancel = promise.cancel.bind(promise)
   return newPromise
 }
 
 function sqlTemplate (client, values) {
-  var strings = values.shift()
-  var stringsLength = strings.length
-  var valuesLength = values.length
-  var maxLength = Math.max(stringsLength, valuesLength)
-
-  var sql = ''
-  var params = []
-  var val
-  for (var i = 0; i < maxLength; i++) {
+  let strings = values.shift()
+  let stringsLength = strings.length
+  let valuesLength = values.length
+  let maxLength = Math.max(stringsLength, valuesLength)
+  let sql = ''
+  let params = []
+  let val
+  for (let i = 0; i < maxLength; i++) {
     if (i < stringsLength) {
       val = strings[i]
       if (canGetRawSqlFrom(val)) {
@@ -138,7 +133,7 @@ function sqlTemplate (client, values) {
 function templateIdentifier (value) {
   value = escape.identifier(value)
   return {
-    __unsafelyGetRawSql: function __unsafelyGetRawSql () {
+    __unsafelyGetRawSql () {
       return value
     }
   }
@@ -192,56 +187,52 @@ function canGetRawSqlFrom (v) {
   )
 }
 
-function withConnection (server, work, cancellable) {
-  var client
-  var done
-  var cancelled
-  var activeWork
-  var finishCancel
+function withConnection (connection, work, cancellable) {
+  let client
+  let done
+  let cancelled
+  let activeWork
+  let finishCancel
 
-  var promise = (
-    connect(server)
-      .then(function onConnect (conn) {
-        client = conn[0]
-        done = conn[1]
+  let promise =
+    connection.then(function onConnect (conn) {
+      client = conn[0]
+      done = conn[1]
 
-        if (cancelled) {
-          done()
-          setImmediate(finishCancel)
-          throw new Cancel()
-        }
-
-        activeWork = work(client)
-        return activeWork
-      })
-      .then(function onResult (result) {
+      if (cancelled) {
         done()
+        setImmediate(finishCancel)
+        throw new Cancel()
+      }
 
-        if (cancelled) {
-          setImmediate(finishCancel)
-          throw new Cancel()
+      activeWork = work(client)
+      return activeWork
+    }).then(function onResult (result) {
+      done()
+
+      if (cancelled) {
+        setImmediate(finishCancel)
+        throw new Cancel()
+      }
+
+      return result
+    }).catch(function onError (err) {
+      if (done) {
+        if (err instanceof Error && err.ABORT_CONNECTION) {
+          // this is a really bad one, remove the connection from the pool
+          done(err)
+        } else {
+          done()
         }
+      }
 
-        return result
-      })
-      .catch(function onError (err) {
-        if (done) {
-          if (err instanceof Error && err.ABORT_CONNECTION) {
-            // this is a really bad one, remove the connection from the pool
-            done(err)
-          } else {
-            done()
-          }
-        }
+      if (cancelled) {
+        setImmediate(finishCancel)
+        throw new Cancel()
+      }
 
-        if (cancelled) {
-          setImmediate(finishCancel)
-          throw new Cancel()
-        }
-
-        throw err
-      })
-  )
+      throw err
+    })
 
   if (cancellable) {
     promise.cancel = function () {
@@ -257,23 +248,24 @@ function withConnection (server, work, cancellable) {
   return promise
 }
 
-function connect (server) {
+function getApplicationName () {
+  let path = findRoot(process.argv[1] || process.cwd()) + '/package.json'
+  let pkg = JSON.parse(readFileSync(path, 'utf8'))
+  return pkg.name
+}
+
+function configure (server) {
   if (typeof server === 'string') {
     server = parseConnectionString(server)
   } else if (typeof server === 'undefined') {
     server = {}
   }
 
-  server.poolSize = server.poolSize || process.env.PG_POOL_SIZE
-  server.poolIdleTimeout = (
-    server.poolIdleTimeout ||
+  server.max = server.poolSize || process.env.PG_POOL_SIZE
+  server.idleTimeoutMillis = (
+    server.idleTimeoutMillis ||
     process.env.PG_IDLE_TIMEOUT ||
     (process.env.NODE_ENV === 'test' && 1)
-  )
-  server.reapIntervalMillis = (
-    server.reapIntervalMillis ||
-    process.env.PG_REAP_INTERVAL ||
-    (process.env.NODE_ENV === 'test' && 50)
   )
   server.application_name = (
     server.application_name ||
@@ -281,37 +273,34 @@ function connect (server) {
     getApplicationName()
   )
 
-  return new Promise(function doConnection (resolve, reject) {
-    return pg.connect(server, function onConnect (err, client, done) {
-      if (err) {
-        reject(err)
-      } else {
-        resolve([client, done])
-      }
-    })
-  })
-}
+  let _pool
+  function pool () {
+    if (!_pool) {
+      _pool = new Promise(resolve => {
+        resolve(new Pool(server))
+      })
+    }
+    return _pool
+  }
 
-function getApplicationName () {
-  var path = findRoot(process.argv[1] || process.cwd()) + '/package.json'
-  var pkg = JSON.parse(readFileSync(path, 'utf8'))
-  return pkg.name
-}
+  function connect () {
+    // TODO: allow returning just the client, not the tuple of client + release fn
+    return pool().then(p => p.connect()).then(client => [client, client.release.bind(client)])
+  }
 
-function configure (server) {
-  var iface = {
-    connection: function connection (work) {
-      return withConnection(server, function doConnection (client) {
+  let iface = {
+    connection (work) {
+      return withConnection(connect(), function doConnection (client) {
         return work(Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
           i[methodName] = INTERFACE[methodName].bind(null, client)
           return i
         }, {}))
       })
     },
-    transaction: function transaction (work) {
+    transaction (work) {
       return iface.connection(function doTransaction (connIface) {
-        var result
-        var inTransaction
+        let result
+        let inTransaction
 
         return (
           connIface.query('begin')
@@ -334,14 +323,14 @@ function configure (server) {
                   .catch(function onRollbackFail (rollbackErr) {
                     err = (err instanceof Error ? err.message + '\n' + err.stack : err)
                     rollbackErr = (rollbackErr instanceof Error ? rollbackErr.message + '\n' + rollbackErr.stack : rollbackErr)
-                    var bigErr = new Error(
+                    let bigErr = new Error(
                       'Failed to execute rollback after error\n' +
                       err + '\n\n' + rollbackErr
                     )
                     bigErr.ABORT_CONNECTION = true
                     throw bigErr
                   })
-                  .then(function onRollback (r) {
+                  .then(function onRollback () {
                     throw err
                   })
               )
@@ -351,17 +340,15 @@ function configure (server) {
     }
   }
 
-  iface.template = function sqlTemplate (client) {
-    var values = Array.prototype.slice.call(arguments)
-    var strings = values.shift()
-    var stringsLength = strings.length
-    var valuesLength = values.length
-    var maxLength = Math.max(stringsLength, valuesLength)
+  iface.template = function sqlTemplate (strings, ...values) {
+    let stringsLength = strings.length
+    let valuesLength = values.length
+    let maxLength = Math.max(stringsLength, valuesLength)
 
     return {
       __unsafelyGetRawSql (client) {
-        var sql = ''
-        for (var i = 0; i < maxLength; i++) {
+        let sql = ''
+        for (let i = 0; i < maxLength; i++) {
           if (i < stringsLength) {
             sql += strings[i]
           }
@@ -388,12 +375,12 @@ function configure (server) {
   iface.identifiers = templateIdentifiers
   iface.literal = templateLiteral
   iface.literals = templateLiterals
+  iface.pool = pool
 
   iface = Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
-    i[methodName] = function (sql, params) {
-      var args = Array.prototype.slice.call(arguments)
-      return withConnection(server, function onConnect (client) {
-        return INTERFACE[methodName].apply(null, [client].concat(args))
+    i[methodName] = function (...args) {
+      return withConnection(connect(), function onConnect (client) {
+        return INTERFACE[methodName](client, ...args)
       }, true)
     }
     i[methodName].displayName = methodName
