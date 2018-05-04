@@ -101,14 +101,10 @@ function thenWithCancel (promise, fn) {
 }
 
 function sqlTemplate (client, values) {
-  console.log(values)
   let strings = values.shift()
   let stringsLength = strings.length
   let valuesLength = values.length
   let maxLength = Math.max(stringsLength, valuesLength)
-
-  console.log(values, strings)
-
   let sql = ''
   let params = []
   let val
