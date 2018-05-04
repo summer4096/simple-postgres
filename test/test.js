@@ -289,7 +289,7 @@ test('bad sql in transaction', async function (t) {
   }
 
   t.equal(
-    countConnections(db.pool),
+    countConnections(await db.pool()),
     1,
     'rollbacks should keep the connection in the pool'
   )
@@ -299,7 +299,7 @@ test('failed rollback', async function (t) {
   try {
     await db.transaction(async function ({ query }) {
       // break the transaction by destroying all connections everywhere
-      await destroyConnections(db.pool)
+      await destroyConnections(await db.pool())
       throw new Error('initial transaction error')
     })
     t.fail('transaction errors should cause the promise to reject')
@@ -311,7 +311,7 @@ test('failed rollback', async function (t) {
   }
 
   t.equal(
-    countConnections(db.pool),
+    countConnections(await db.pool()),
     0,
     'failed transaction rollbacks should remove the client from the pool'
   )

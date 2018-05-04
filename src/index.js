@@ -273,19 +273,23 @@ function configure (server) {
     getApplicationName()
   )
 
-  let pool = new Pool(server)
+  let _pool
+  function pool () {
+    if (!_pool) {
+      _pool = new Promise(resolve => {
+        resolve(new Pool(server))
+      })
+    }
+    return _pool
+  }
 
   function connect () {
-    return new Promise((resolve, reject) => {
-      pool.connect((err, client, release) => {
-        if (err) reject(err)
-        else resolve([client, release])
-      })
-    })
+    // TODO: allow returning just the client, not the tuple of client + release fn
+    return pool().then(p => p.connect()).then(client => [client, client.release.bind(client)])
   }
 
   let iface = {
-    connection: function connection (work) {
+    connection (work) {
       return withConnection(connect(), function doConnection (client) {
         return work(Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
           i[methodName] = INTERFACE[methodName].bind(null, client)
@@ -293,7 +297,7 @@ function configure (server) {
         }, {}))
       })
     },
-    transaction: function transaction (work) {
+    transaction (work) {
       return iface.connection(function doTransaction (connIface) {
         let result
         let inTransaction
