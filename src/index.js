@@ -261,6 +261,10 @@ function configure (server) {
     server = {}
   }
 
+  if (server.ssl === true) {
+    server.ssl = {} // delete this
+  }
+
   server.max = server.poolSize || process.env.PG_POOL_SIZE
   server.idleTimeoutMillis = (
     server.idleTimeoutMillis ||
