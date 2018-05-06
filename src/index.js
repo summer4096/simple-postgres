@@ -285,7 +285,14 @@ function configure (server) {
   function pool () {
     if (!_pool) {
       _pool = new Promise(resolve => {
-        resolve(new Pool(server))
+        const p = new Pool(server)
+
+        p.on('error', e => {
+          // Don't crash like a dunce when connections to the db fail
+          console.error('unhandled node-postgres pool error!', e instanceof Error ? e.stack : e)
+        })
+
+        resolve(p)
       })
     }
     return _pool
