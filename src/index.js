@@ -5,6 +5,8 @@ const readFileSync = require('fs').readFileSync
 const escape = require('./escape')
 const inspect = require('util').inspect
 
+function DO_NOTHING () {}
+
 const INTERFACE = {
   query (client, ...args) {
     if (canGetRawSqlFrom(args[0])) {
@@ -171,8 +173,8 @@ function templateItems (items, separator) {
     __unsafelyGetRawSql: function __unsafelyGetRawSql (client) {
       return items.map((v) =>
         canGetRawSqlFrom(v)
-        ? v.__unsafelyGetRawSql(client)
-        : escape.literal(v)
+          ? v.__unsafelyGetRawSql(client)
+          : escape.literal(v)
       ).join(separator || ', ')
     }
   }
@@ -273,8 +275,13 @@ function configure (server) {
     getApplicationName()
   )
 
+  let handleError = server.errorHandler || DO_NOTHING
+  function setErrorHandler (handler) {
+    handleError = handler || DO_NOTHING
+  }
+
   if (server.debug_postgres || process.env.DEBUG_POSTGRES) {
-    const defaultLog = server.log || function () {}
+    const defaultLog = server.log || DO_NOTHING
     server.log = function debugLog (...args) {
       console.debug('simple-postgres debug', ...args)
       defaultLog(...args)
@@ -285,7 +292,9 @@ function configure (server) {
   function pool () {
     if (!_pool) {
       _pool = new Promise(resolve => {
-        resolve(new Pool(server))
+        const p = new Pool(server)
+        p.on('error', (...args) => handleError(...args))
+        resolve(p)
       })
     }
     return _pool
@@ -296,9 +305,7 @@ function configure (server) {
     return pool().then(p => p.connect()).then(client => {
       if (typeof client.__simplePostgresOnError === 'undefined') {
         client.__simplePostgresOnError = true
-        client.on('error', function (e) {
-          console.error('unhandled node-postgres client error!', e instanceof Error ? e.stack : e)
-        })
+        client.on('error', (...args) => handleError(...args))
       }
       return [client, client.release.bind(client)]
     })
@@ -392,6 +399,7 @@ function configure (server) {
   iface.literal = templateLiteral
   iface.literals = templateLiterals
   iface.pool = pool
+  iface.setErrorHandler = setErrorHandler
 
   iface = Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
     i[methodName] = function (...args) {
