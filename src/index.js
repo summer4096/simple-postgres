@@ -254,6 +254,11 @@ function getApplicationName () {
   return pkg.name
 }
 
+let errorHandler = () => {} // NOOP
+function setErrorHandler (cb) {
+  errorHandler = cb
+}
+
 function configure (server) {
   if (typeof server === 'string') {
     server = parseConnectionString(server)
@@ -272,6 +277,7 @@ function configure (server) {
     process.env.APPLICATION_NAME ||
     getApplicationName()
   )
+  let handleError = server.errorHandler || errorHandler
 
   if (server.debug_postgres || process.env.DEBUG_POSTGRES) {
     const defaultLog = server.log || function () {}
@@ -286,12 +292,7 @@ function configure (server) {
     if (!_pool) {
       _pool = new Promise(resolve => {
         const p = new Pool(server)
-
-        p.on('error', e => {
-          // Don't crash like a dunce when connections to the db fail
-          console.error('unhandled node-postgres pool error!', e instanceof Error ? e.stack : e)
-        })
-
+        p.on('error', handleError)
         resolve(p)
       })
     }
@@ -303,9 +304,7 @@ function configure (server) {
     return pool().then(p => p.connect()).then(client => {
       if (typeof client.__simplePostgresOnError === 'undefined') {
         client.__simplePostgresOnError = true
-        client.on('error', function (e) {
-          console.error('unhandled node-postgres client error!', e instanceof Error ? e.stack : e)
-        })
+        client.on('error', handleError)
       }
       return [client, client.release.bind(client)]
     })
@@ -416,3 +415,4 @@ function configure (server) {
 module.exports = configure(process.env.DATABASE_URL)
 module.exports.configure = configure
 module.exports.Cancel = Cancel
+module.exports.setErrorHandler = setErrorHandler
