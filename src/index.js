@@ -171,8 +171,8 @@ function templateItems (items, separator) {
     __unsafelyGetRawSql: function __unsafelyGetRawSql (client) {
       return items.map((v) =>
         canGetRawSqlFrom(v)
-        ? v.__unsafelyGetRawSql(client)
-        : escape.literal(v)
+          ? v.__unsafelyGetRawSql(client)
+          : escape.literal(v)
       ).join(separator || ', ')
     }
   }
@@ -254,11 +254,6 @@ function getApplicationName () {
   return pkg.name
 }
 
-let errorHandler = () => {} // NOOP
-function setErrorHandler (cb) {
-  errorHandler = cb
-}
-
 function configure (server) {
   if (typeof server === 'string') {
     server = parseConnectionString(server)
@@ -277,7 +272,11 @@ function configure (server) {
     process.env.APPLICATION_NAME ||
     getApplicationName()
   )
-  let handleError = server.errorHandler || errorHandler
+
+  let handleError = server.errorHandler || function () {}
+  function setErrorHandler (handler) {
+    handleError = handler
+  }
 
   if (server.debug_postgres || process.env.DEBUG_POSTGRES) {
     const defaultLog = server.log || function () {}
@@ -292,7 +291,7 @@ function configure (server) {
     if (!_pool) {
       _pool = new Promise(resolve => {
         const p = new Pool(server)
-        p.on('error', handleError)
+        p.on('error', (...args) => handleError(...args))
         resolve(p)
       })
     }
@@ -304,7 +303,7 @@ function configure (server) {
     return pool().then(p => p.connect()).then(client => {
       if (typeof client.__simplePostgresOnError === 'undefined') {
         client.__simplePostgresOnError = true
-        client.on('error', handleError)
+        client.on('error', (...args) => handleError(...args))
       }
       return [client, client.release.bind(client)]
     })
@@ -398,6 +397,7 @@ function configure (server) {
   iface.literal = templateLiteral
   iface.literals = templateLiterals
   iface.pool = pool
+  iface.setErrorHandler = setErrorHandler
 
   iface = Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
     i[methodName] = function (...args) {
@@ -415,4 +415,3 @@ function configure (server) {
 module.exports = configure(process.env.DATABASE_URL)
 module.exports.configure = configure
 module.exports.Cancel = Cancel
-module.exports.setErrorHandler = setErrorHandler
