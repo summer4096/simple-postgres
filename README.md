@@ -343,6 +343,9 @@ FROM books
 */
 ```
 
+##### db.setErrorHandler(callback)
+sets a callback for otherwise unhandled errors such as dropped connections and other mysteries
+
 ### Contributing
 
 Please send pull requests!
