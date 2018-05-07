@@ -5,6 +5,8 @@ const readFileSync = require('fs').readFileSync
 const escape = require('./escape')
 const inspect = require('util').inspect
 
+function DO_NOTHING () {}
+
 const INTERFACE = {
   query (client, ...args) {
     if (canGetRawSqlFrom(args[0])) {
@@ -273,13 +275,13 @@ function configure (server) {
     getApplicationName()
   )
 
-  let handleError = server.errorHandler || function () {}
+  let handleError = server.errorHandler || DO_NOTHING
   function setErrorHandler (handler) {
-    handleError = handler
+    handleError = handler || DO_NOTHING
   }
 
   if (server.debug_postgres || process.env.DEBUG_POSTGRES) {
-    const defaultLog = server.log || function () {}
+    const defaultLog = server.log || DO_NOTHING
     server.log = function debugLog (...args) {
       console.debug('simple-postgres debug', ...args)
       defaultLog(...args)
