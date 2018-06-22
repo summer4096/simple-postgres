@@ -1,5 +1,6 @@
 const { Pool } = require('pg')
 const parseConnectionString = require('pg-connection-string').parse
+const parseUrl = require('url').parse
 const findRoot = require('find-root')
 const readFileSync = require('fs').readFileSync
 const escape = require('./escape')
@@ -257,12 +258,28 @@ function getApplicationName () {
 
 function configure (server) {
   if (typeof server === 'string') {
-    server = parseConnectionString(server)
+    server = Object.assign(
+      parseConnectionString(server),
+      parseUrl(server, true).query // add query parameters
+    )
   } else if (typeof server === 'undefined') {
     server = {}
   }
 
-  server.max = server.poolSize || process.env.PG_POOL_SIZE
+  for (let v of ['ssl', 'keepAlive', 'binary']) {
+    if (typeof server[v] === 'string') {
+      server[v] = server[v] !== 'false'
+    }
+  }
+  for (let v of ['idleTimeoutMillis', 'poolSize', 'max', 'statement_timeout']) {
+    if (typeof server[v] === 'string') {
+      server[v] = server[v] === 'false' ? false : Number(server[v])
+    }
+  }
+
+  if ((server.poolSize || process.env.PG_POOL_SIZE) && typeof server.max === 'undefined') {
+    server.max = server.poolSize || process.env.PG_POOL_SIZE
+  }
   server.idleTimeoutMillis = (
     server.idleTimeoutMillis ||
     process.env.PG_IDLE_TIMEOUT ||
@@ -315,6 +332,7 @@ function configure (server) {
       return withConnection(connect(), function doConnection (client) {
         return work(Object.keys(INTERFACE).reduce(function linkInterface (i, methodName) {
           i[methodName] = INTERFACE[methodName].bind(null, client)
+          i[methodName].displayName = methodName + '_in_connection'
           return i
         }, {}))
       })
