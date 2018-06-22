@@ -21,6 +21,7 @@ test('cancel', async function (t) {
 test('db.connection', async function (t) {
   await db.connection(async function ({ query, value }) {
     await query('SET statement_timeout=123456789')
+    await db.query('RESET statement_timeout')
     t.equal(await value('SHOW statement_timeout'), '123456789ms', 'should use the same connection')
   })
 })
@@ -228,24 +229,30 @@ test('successful transaction', async function (t) {
   await db.query('insert into beep (id) values (1), (2), (3)')
 
   await db.transaction(async function (trx) {
+    t.deepEqual(
+      await trx.column('select id from beep order by id -- trx 1'),
+      [1, 2, 3],
+      'boop is sane'
+    )
+
     await trx.query('delete from beep where id=2')
     await trx.query('insert into beep (id) VALUES (4), (5), (6)')
 
     t.deepEqual(
-      await db.column('select id from beep order by id'),
+      await db.column('select id from beep order by id -- db'),
       [1, 2, 3],
       'changes are invisible outside transaction'
     )
 
     t.deepEqual(
-      await trx.column('select id from beep order by id'),
+      await trx.column('select id from beep order by id -- trx 2'),
       [1, 3, 4, 5, 6],
       'changes are visible inside transaction'
     )
   })
 
   t.deepEqual(
-    await db.column('select id from beep order by id'),
+    await db.column('select id from beep order by id -- after'),
     [1, 3, 4, 5, 6],
     'changes are visible after commit'
   )
@@ -257,6 +264,7 @@ test('bad connection url', async function (t) {
     t.fail('should not be able to connect to postgres://example')
   } catch (err) {
     t.equal(err.code, 'ENOTFOUND', 'incorrect host should throw ENOTFOUND')
+    if (err.code !== 'ENOTFOUND') throw err
   }
 })
 
