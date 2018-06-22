@@ -1,6 +1,6 @@
 {
   "name": "simple-postgres",
-  "version": "3.0.5",
+  "version": "3.0.6",
   "description": "a minimal postgres interface for node",
   "main": "src/index.js",
   "keywords": [

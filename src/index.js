@@ -202,7 +202,6 @@ function withConnection (connection, work, cancellable) {
       done = conn[1]
 
       if (cancelled) {
-        done()
         setImmediate(finishCancel)
         throw new Cancel()
       }
@@ -210,12 +209,12 @@ function withConnection (connection, work, cancellable) {
       activeWork = work(client)
       return activeWork
     }).then(function onResult (result) {
-      done()
-
       if (cancelled) {
         setImmediate(finishCancel)
         throw new Cancel()
       }
+
+      done()
 
       return result
     }).catch(function onError (err) {
