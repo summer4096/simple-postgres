@@ -1,3 +1,4 @@
 built-test
 node_modules
 coverage
+.idea

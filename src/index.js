@@ -434,3 +434,4 @@ function configure (server) {
 module.exports = configure(process.env.DATABASE_URL)
 module.exports.configure = configure
 module.exports.Cancel = Cancel
+module.exports.SqlError = SqlError
