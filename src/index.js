@@ -80,6 +80,7 @@ class Cancel extends Error {
 class SqlError extends Error {
   constructor (sql, params, stack, pgError) {
     super()
+    Object.assign(this, pgError)
     this.name = 'SqlError'
     this.message = (
       'SQL Error: ' + pgError.message + '\n' +
