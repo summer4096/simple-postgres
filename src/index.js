@@ -19,15 +19,24 @@ const INTERFACE = {
     let query
     let cancelled
     let stack = (new Error()).stack
+    const notices = []
+    function onNotice (notice) {
+      notices.push(notice)
+    }
+
+    client.on('notice', onNotice)
 
     let promise = new Promise(function doQuery (resolve, reject) {
       if (cancelled) return reject(new Cancel())
       query = client.query(sql, params, function onResult (err, result) {
         if (cancelled) {
+          client.removeListener('notice', onNotice)
           reject(new Cancel())
         } else if (err) {
-          reject(new SqlError(sql, params, stack, err))
+          client.removeListener('notice', onNotice)
+          reject(new SqlError(sql, params, stack, err, notices))
         } else {
+          client.removeListener('notice', onNotice)
           resolve(result)
         }
       })
@@ -78,12 +87,12 @@ class Cancel extends Error {
 }
 
 class SqlError extends Error {
-  constructor (sql, params, stack, pgError) {
+  constructor (sql, params, stack, pgError, notices) {
     super()
     Object.assign(this, pgError)
     this.name = 'SqlError'
     this.message = (
-      'SQL Error: ' + pgError.message + '\n' +
+      'SQL Error: ' + [...notices, pgError.message].join('\n') + '\n' +
       sql +
       (params && params.length
         ? '\nQuery parameters:' + stringifyParameters(params)

@@ -286,6 +286,26 @@ test('bad query with params', async function (t) {
   }
 })
 
+test('error with notice', async function (t) {
+  const sql = 'DO language plpgsql $$ BEGIN RAISE NOTICE \'notice\'; SELECT \'1.0\'::int; END $$'
+  try {
+    await db.query(sql)
+    t.fail('should not be able to execute an invalid query')
+  } catch (err) {
+    t.equal(err.message, `SQL Error: notice: notice\ninvalid input syntax for integer: "1.0"\n${sql}`)
+  }
+})
+
+test('error with multiple notices', async function (t) {
+  const sql = 'DO language plpgsql $$ BEGIN RAISE NOTICE \'notice\'; RAISE WARNING \'warning\'; SELECT \'1.0\'::int; END $$'
+  try {
+    await db.query(sql)
+    t.fail('should not be able to execute an invalid query')
+  } catch (err) {
+    t.equal(err.message, `SQL Error: notice: notice\nnotice: warning\ninvalid input syntax for integer: "1.0"\n${sql}`)
+  }
+})
+
 test('bad sql in transaction', async function (t) {
   try {
     await db.transaction(async function ({ query }) {
